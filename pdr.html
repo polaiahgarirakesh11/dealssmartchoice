@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin - Referral & Payment Management</title>
+
+<style>
+body{font-family:Arial;background:#f4f4f4;padding:20px;}
+h2{text-align:center;}
+table{width:100%;border-collapse:collapse;margin-top:10px;}
+th,td{border:1px solid #ccc;padding:8px;text-align:center;}
+th{background:#222;color:#fff;}
+input,button{padding:6px;margin:3px;}
+.history-box{background:#fafafa;padding:10px;text-align:left;}
+.priority{background:#fff3cd;}
+.alert{color:red;font-weight:bold;}
+</style>
+</head>
+
+<body>
+
+<h2>Admin - Referral & Payment Management</h2>
+
+<input type="text" id="search" placeholder="Search Name / Mobile" onkeyup="searchAgent()">
+
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Mobile</th>
+<th>Referrals</th>
+<th>Total Earning</th>
+<th>Total Paid</th>
+<th>Unpaid</th>
+<th>Pay Amount</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody id="data"></tbody>
+</table>
+
+<script>
+const PER_REFERRAL_AMOUNT = 1;
+
+let agents = JSON.parse(localStorage.getItem("agents")) || {};
+let tbody = document.getElementById("data");
+
+/* ---------- MAIN TABLE ---------- */
+function loadTable() {
+    tbody.innerHTML = "";
+
+    let requests = JSON.parse(localStorage.getItem("paymentRequests")) || [];
+
+    let priority = [];
+    let normal = [];
+
+    for (let code in agents) {
+        let hasPending = requests.some(
+            r => r.code === code && r.status === "Pending"
+        );
+        if (hasPending) priority.push(code);
+        else normal.push(code);
+    }
+
+    let orderedAgents = priority.concat(normal);
+
+    orderedAgents.forEach(code => {
+        let a = agents[code];
+
+        a.name = a.name || code;
+        a.referrals = Number(a.referrals) || 0;
+        a.paymentHistory = a.paymentHistory || [];
+
+        let paid = 0;
+        a.paymentHistory.forEach(p => {
+            if (p.status === "Paid") paid += Number(p.amount) || 0;
+        });
+
+        let earning = a.referrals * PER_REFERRAL_AMOUNT;
+        let unpaid = earning - paid;
+        if (unpaid < 0) unpaid = 0;
+
+        tbody.innerHTML += `
+        <tr class="${priority.includes(code) ? 'priority' : ''}">
+            <td>${a.name}</td>
+            <td>${code}</td>
+            <td>${a.referrals}</td>
+            <td>Rs. ${earning}</td>
+            <td>Rs. ${paid}</td>
+            <td>Rs. ${unpaid}</td>
+            <td>
+                <input type="number" id="amt_${code}" value="${unpaid}">
+            </td>
+            <td>
+                <button onclick="pay('${code}')">Pay</button>
+                <button onclick="toggleHistory('${code}')">History</button>
+                ${priority.includes(code) ? '<span class="alert"> Pending</span>' : ''}
+            </td>
+        </tr>
+
+        <tr id="hist_${code}" style="display:none;">
+            <td colspan="8">
+                <div class="history-box" id="histBox_${code}"></div>
+            </td>
+        </tr>
+        `;
+    });
+
+    localStorage.setItem("agents", JSON.stringify(agents));
+}
+
+/* ---------- PAY ---------- */
+function pay(code) {
+    let amt = Number(document.getElementById("amt_" + code).value);
+    if (!amt || amt <= 0) {
+        alert("Invalid amount");
+        return;
+    }
+
+    agents[code].paymentHistory.push({
+        amount: amt,
+        status: "Paid",
+        method: "UPI",
+        date: new Date().toLocaleString()
+    });
+
+    let requests = JSON.parse(localStorage.getItem("paymentRequests")) || [];
+    requests = requests.filter(r => r.code !== code);
+    localStorage.setItem("paymentRequests", JSON.stringify(requests));
+
+    localStorage.setItem("agents", JSON.stringify(agents));
+    alert("Payment successful");
+    loadTable();
+}
+
+/* ---------- HISTORY ---------- */
+function toggleHistory(code) {
+    let row = document.getElementById("hist_" + code);
+    let box = document.getElementById("histBox_" + code);
+
+    if (row.style.display === "none") {
+        let h = agents[code].paymentHistory;
+        let html = "<b>Payment History</b><br>";
+
+        if (h.length === 0) {
+            html += "No payments yet";
+        } else {
+            h.forEach(p => {
+                html += p.date + " | Rs. " + p.amount + " | " + p.method + " | " + p.status + "<br>";
+            });
+        }
+        box.innerHTML = html;
+        row.style.display = "table-row";
+    } else {
+        row.style.display = "none";
+    }
+}
+
+/* ---------- SEARCH ---------- */
+function searchAgent() {
+    let val = document.getElementById("search").value.toUpperCase();
+    let rows = tbody.getElementsByTagName("tr");
+
+    for (let i = 0; i < rows.length; i += 2) {
+        let show = rows[i].innerText.toUpperCase().includes(val);
+        rows[i].style.display = show ? "" : "none";
+        rows[i+1].style.display = "none";
+    }
+}
+
+loadTable();
+</script>
+
+</body>
+</html>
